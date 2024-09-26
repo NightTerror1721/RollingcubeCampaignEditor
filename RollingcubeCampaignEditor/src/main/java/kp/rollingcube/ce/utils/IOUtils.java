@@ -119,6 +119,11 @@ public final class IOUtils
         return Path.of(System.getProperty("user.dir")).toAbsolutePath();
     }
     
+    public @NonNull Path getHomeDirectory()
+    {
+        return Path.of(System.getProperty("user.home")).toAbsolutePath();
+    }
+    
     public @NonNull String getFileName(@NonNull Path file)
     {
         var name = file.getFileName().toString();

@@ -15,7 +15,7 @@ import org.json.JSONTokener;
 @UtilityClass
 public class GlobalProperties
 {
-    private final Path PROPS_FILE = IOUtils.getUserDirectory().resolve(".RollingcubeCampaignEditorProps.json");
+    private final Path PROPS_FILE = IOUtils.getHomeDirectory().resolve(".RollingcubeCampaignEditorProps.json");
     
     private final HashMap<String, String> props = new HashMap<>();
     
@@ -34,7 +34,7 @@ public class GlobalProperties
         }
         catch(Exception ex)
         {
-            ex.printStackTrace(System.err);
+            //ex.printStackTrace(System.err);
         }
     }
     
