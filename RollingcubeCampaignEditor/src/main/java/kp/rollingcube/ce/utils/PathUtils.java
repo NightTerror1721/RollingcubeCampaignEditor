@@ -77,7 +77,7 @@ public final class PathUtils
         if(lastDot < 0 || (chars.length - lastDot) <= 1)
             return path;
         
-        var newFilename = filename.substring(lastDot + 1);
+        var newFilename = filename.substring(0, lastDot);
         var parent = path.getParent();
         if(parent == null)
             return Path.of(newFilename);
@@ -89,8 +89,8 @@ public final class PathUtils
         if(extension == null || extension.isBlank())
             return removeExtension(path);
         
-        if(extension.charAt(0) == '.')
-            extension = extension.substring(1);
+        if(extension.charAt(0) != '.')
+            extension = '.' + extension;
         
         var pathFilename = path.getFileName();
         if(pathFilename == null)
@@ -109,7 +109,7 @@ public final class PathUtils
         if(lastDot < 0 || (chars.length - lastDot) <= 1)
             newFilename = filename;
         else
-            newFilename = filename.substring(lastDot + 1);
+            newFilename = filename.substring(0, lastDot);
         
         newFilename += extension;
         

@@ -23,7 +23,7 @@ public final class BonusLevel extends IndexedLevel
     @Override
     public @NonNull String getFilenameWithoutExtension()
     {
-        return Integer.toString(index);
+        return Integer.toString(index + 1);
     }
     
     @Override

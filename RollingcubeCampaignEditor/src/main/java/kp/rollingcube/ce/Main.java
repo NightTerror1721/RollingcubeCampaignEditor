@@ -1,6 +1,7 @@
 package kp.rollingcube.ce;
 
 import java.io.IOException;
+import kp.rollingcube.ce.ui.CampaignEditor;
 
 /**
  *
@@ -10,6 +11,6 @@ public class Main
 {
     public static void main(String[] args) throws IOException
     {
-        //var campaign = Campaign.load(Path.of("D:\\Projects\\Rollingcube Campaign Editor Tests\\Main"));
+        CampaignEditor.open();
     }
 }

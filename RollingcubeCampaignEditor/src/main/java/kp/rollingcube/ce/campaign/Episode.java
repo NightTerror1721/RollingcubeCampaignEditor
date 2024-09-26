@@ -6,8 +6,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.Set;
 import kp.rollingcube.ce.campaign.locks.EpisodeUnlockRequirementsCollection;
-import kp.rollingcube.ce.utils.FileUtils;
+import kp.rollingcube.ce.utils.IOUtils;
 import kp.rollingcube.ce.utils.StringUtils;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -33,6 +34,8 @@ public final class Episode
     @Getter
     private Integer unlockedNormalLevels;
     
+    private byte[] thumbnail;
+    
     private final ArrayList<NormalLevel> normalLevels = new ArrayList<>();
     private final ArrayList<BonusLevel> bonusLevels = new ArrayList<>();
     private final HashMap<String, SecretLevel> secretLevels = new HashMap<>();
@@ -53,8 +56,23 @@ public final class Episode
     public @NonNull Path getSecretLevelsPath() { return getPath().resolve(LevelType.SECRET.getFolderName()); }
     
     public @NonNull Path getThumbnailPath() { return getPath().resolve("thumbnail.png"); }
+    public boolean hasThumbnailPath() { return Files.isRegularFile(getThumbnailPath()); }
+    
+    public boolean hasThumbnail() { return thumbnail != null; }
+    public @NonNull Optional<byte[]> getThumbnail() { return Optional.ofNullable(thumbnail); }
     
     public void changeName(String name) throws IOException { campaign.changeEpisodeName(this.name, name); }
+    
+    public void changeThumbnail(Path path) throws IOException
+    {
+        var data = IOUtils.readAllBytesFromFile(path);
+        thumbnail = data;
+    }
+    
+    public void removeThumbnail()
+    {
+        thumbnail = null;
+    }
     
     public void swapWith(Episode other)
     {
@@ -65,13 +83,6 @@ public final class Episode
     }
     
     public void remove() { campaign.removeEpisode(name); }
-    
-    void ensureFolder(LevelType folder) throws IOException
-    {
-        var path = getPath().resolve(folder.getFolderName());
-        if(!Files.isDirectory(path))
-            Files.createDirectories(path);
-    }
     
     public void setUnlockedNormalLevels(Integer amount)
     {
@@ -95,6 +106,8 @@ public final class Episode
         return secretLevels.containsKey(name);
     }
     
+    public @NonNull Set<String> getSecretLevelsNames() { return secretLevels.keySet(); }
+    
     public @NonNull NormalLevel getNormalLevel(int index) { return normalLevels.get(index); }
     public @NonNull BonusLevel getBonusLevel(int index) { return bonusLevels.get(index); }
     public @NonNull SecretLevel getSecretLevel(String name)
@@ -105,17 +118,17 @@ public final class Episode
         return level;
     }
     
-    public void swapNormalLevels(int sourceIndex, int targetIndex) throws IOException
+    public void swapNormalLevels(int sourceIndex, int targetIndex) throws IndexOutOfBoundsException
     {
         swapIndexedLevels(normalLevels, sourceIndex, targetIndex);
     }
     
-    public void swapBonusLevels(int sourceIndex, int targetIndex) throws IOException
+    public void swapBonusLevels(int sourceIndex, int targetIndex) throws IndexOutOfBoundsException
     {
         swapIndexedLevels(bonusLevels, sourceIndex, targetIndex);
     }
     
-    private void swapIndexedLevels(ArrayList<? extends IndexedLevel> levels, int sourceIndex, int targetIndex) throws IOException
+    private <T extends IndexedLevel> void swapIndexedLevels(ArrayList<T> levels, int sourceIndex, int targetIndex) throws IndexOutOfBoundsException
     {
         if(sourceIndex < 0 || sourceIndex >= levels.size())
             throw new IndexOutOfBoundsException(sourceIndex);
@@ -128,13 +141,14 @@ public final class Episode
         var current = levels.get(sourceIndex);
         var target = levels.get(targetIndex);
         
-        ensureFolder(current.getType());
-        ensureFolder(target.getType());
-        FileUtils.swap(current.getLevelPath(), target.getLevelPath());
-        FileUtils.swap(current.getThumbnailPath(), target.getThumbnailPath());
+        current.setIndex(targetIndex);
+        levels.set(current.getIndex(), current);
+        
+        target.setIndex(sourceIndex);
+        levels.set(target.getIndex(), target);
     }
     
-    public void changeSecretLevelName(String currentName, String newName) throws IOException
+    public void changeSecretLevelName(String currentName, String newName) throws IllegalArgumentException
     {
         if(currentName == null || currentName.isBlank())
             throw new IllegalArgumentException("Secret Level name cannot be null or empty");
@@ -146,59 +160,40 @@ public final class Episode
             throw new IllegalArgumentException(String.format("Secret Level \"%s\" already exists", newName));
         
         var level = getSecretLevel(currentName);
-        
-        level.setName(newName);
-        var currentLevelPath = level.getLevelPath();
-        var currentThumbnailPath = level.getThumbnailPath();
-        
         secretLevels.remove(level.getName());
         level.setName(newName);
         secretLevels.put(level.getName(), level);
-        
-        ensureFolder(level.getType());
-        FileUtils.swap(currentLevelPath, level.getLevelPath());
-        FileUtils.swap(currentThumbnailPath, level.getThumbnailPath());
     }
     
-    public void removeNormalLevel(int index) throws IllegalArgumentException, IOException
+    public void removeNormalLevel(int index) throws IllegalArgumentException
     {
         removeIndexedLevel(normalLevels, index);
     }
     
-    public void removeBonusLevel(int index) throws IllegalArgumentException, IOException
+    public void removeBonusLevel(int index) throws IllegalArgumentException
     {
         removeIndexedLevel(bonusLevels, index);
     }
     
-    private void removeIndexedLevel(ArrayList<? extends IndexedLevel> levels, int index) throws IllegalArgumentException, IOException
+    private void removeIndexedLevel(ArrayList<? extends IndexedLevel> levels, int index) throws IllegalArgumentException
     {
         if(index < 0 || index >= levels.size())
             throw new IndexOutOfBoundsException(index);
         
-        for(int i = index + 1; i < levels.size(); i++)
-        {
-            var level = levels.get(i - 1);
-            var nextLevel = levels.get(i);
-            level.replaceLevelFiles(nextLevel.getLevelPath());
-        }
+        levels.remove(index);
         
-        var lastLevel = levels.removeLast();
-        ensureFolder(lastLevel.getType());
-        Files.deleteIfExists(lastLevel.getLevelPath());
-        Files.deleteIfExists(lastLevel.getThumbnailPath());
+        int idx = 0;
+        for(var level : levels)
+            level.setIndex(idx++);
     }
     
-    public void removeSecretLevel(String name) throws IOException
+    public void removeSecretLevel(String name) throws IllegalArgumentException
     {
         if(name == null || name.isBlank())
             throw new IllegalArgumentException("Secret Level name cannot be null or empty");
         
         var level = getSecretLevel(name);
         secretLevels.remove(level.getName());
-        
-        ensureFolder(level.getType());
-        Files.deleteIfExists(level.getLevelPath());
-        Files.deleteIfExists(level.getThumbnailPath());
     }
     
     public @NonNull NormalLevel addNormalLevel(Path levelPath) throws IllegalArgumentException, IOException
@@ -213,9 +208,8 @@ public final class Episode
     
     private static <T extends IndexedLevel> @NonNull T addIndexedLevel(ArrayList<T> levels, T newLevel, Path levelPath) throws IllegalArgumentException, IOException
     {
+        newLevel.loadExternData(levelPath);
         newLevel.setIndex(levels.size());
-        newLevel.replaceLevelFiles(levelPath);
-        
         levels.add(newLevel);
         return newLevel;
     }
@@ -230,10 +224,112 @@ public final class Episode
         
         SecretLevel level = new SecretLevel(this);
         level.setName(name);
-        level.replaceLevelFiles(levelPath);
+        level.loadExternData(levelPath);
         
         secretLevels.put(level.getName(), level);
         return level;
+    }
+    
+    void read(CampaingLoadSaveState state)
+    {
+        readLevels(normalLevels, state);
+        readLevels(bonusLevels, state);
+        readLevels(secretLevels.values(), state);
+        
+        if(!hasThumbnailPath())
+            thumbnail = null;
+        else
+        {
+            state.setCurrentDataText(getThumbnailPath());
+            try { thumbnail = IOUtils.readAllBytesFromFile(getThumbnailPath()); }
+            catch(IOException ex) {}
+            finally { state.resolveElement(); }
+        }
+    }
+    private static void readLevels(Iterable<? extends Level> levels, CampaingLoadSaveState state)
+    {
+        for(var level : levels)
+        {
+            try
+            {
+                level.read(state);
+            }
+            catch(IOException ex)
+            {
+                ex.printStackTrace(System.err);
+            }
+        }
+    }
+    
+    void write(CampaingLoadSaveState state)
+    {
+        try
+        {
+            Files.createDirectories(getPath());
+            Files.createDirectories(getNormalLevelsPath());
+            Files.createDirectories(getBonusLevelsPath());
+            Files.createDirectories(getSecretLevelsPath());
+        }
+        catch(IOException ex)
+        {
+            ex.printStackTrace(System.err);
+        }
+        
+        writeLevels(normalLevels, state);
+        writeLevels(bonusLevels, state);
+        writeLevels(secretLevels.values(), state);
+        
+        try
+        {
+            state.setCurrentDataText(getThumbnailPath());
+            if(thumbnail != null)
+            {
+                IOUtils.writeAllBytesToFile(getThumbnailPath(), thumbnail);
+            }
+        }
+        catch(IOException ex) {}
+        finally { state.resolveElement(); }
+    }
+    private static void writeLevels(Iterable<? extends Level> levels, CampaingLoadSaveState state)
+    {
+        for(var level : levels)
+        {
+            try
+            {
+                level.write(state);
+            }
+            catch(IOException ex)
+            {
+                ex.printStackTrace(System.err);
+            }
+        }
+    }
+    
+    void prepareLoadState(CampaingLoadSaveState state)
+    {
+        prepareLoadSaveState(normalLevels, state, false);
+        prepareLoadSaveState(bonusLevels, state, false);
+        prepareLoadSaveState(secretLevels.values(), state, false);
+        state.addElement();
+    }
+    
+    void prepareSaveState(CampaingLoadSaveState state)
+    {
+        prepareLoadSaveState(normalLevels, state, true);
+        prepareLoadSaveState(bonusLevels, state, true);
+        prepareLoadSaveState(secretLevels.values(), state, true);
+        state.addElement();
+    }
+    
+    private static void prepareLoadSaveState(Iterable<? extends Level> levels, CampaingLoadSaveState state, boolean isSave)
+    {
+        for(var level : levels)
+        {
+            if(isSave)
+                level.prepareSaveState(state);
+            else
+                level.prepareLoadState(state);
+        }
     }
     
     @NonNull JSONObject toJson()
@@ -322,6 +418,8 @@ public final class Episode
                     level.setAlias(StringUtils.isNullOrBlank(alias) ? null : alias);
                     level.setOneTry(oneTry);
                     level.setPenalty(penalty);
+                    
+                    episode.secretLevels.put(level.getName(), level);
                 }
             }
         }

@@ -13,4 +13,9 @@ public final class MathUtils
     {
         return Math.min(max, Math.max(min, value));
     }
+    
+    public float clamp(float value, float min, float max)
+    {
+        return Math.min(max, Math.max(min, value));
+    }
 }

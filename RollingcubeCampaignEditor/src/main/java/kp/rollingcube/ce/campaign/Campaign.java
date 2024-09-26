@@ -6,7 +6,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
-import kp.rollingcube.ce.utils.FileUtils;
+import java.util.Optional;
+import kp.rollingcube.ce.utils.DirectoryUtils;
+import kp.rollingcube.ce.utils.IOUtils;
 import kp.rollingcube.ce.utils.MathUtils;
 import kp.rollingcube.ce.utils.StringUtils;
 import lombok.Getter;
@@ -21,11 +23,12 @@ import org.json.JSONTokener;
  */
 public final class Campaign
 {
-    @Getter private final @NonNull Path path;
+    @Getter private @NonNull Path path;
     @Getter private @NonNull String name;
     @Getter private int requiredFruitsToBonus;
     @Getter private int levelsUntilSaveGame;
     @Getter private Integer defaultUnlockedNormalLevels;
+    private byte[] thumbnail;
     
     private final ArrayList<Episode> episodes = new ArrayList<>();
     private final HashMap<String, Episode> episodesByName = new HashMap<>();
@@ -40,6 +43,9 @@ public final class Campaign
     
     public boolean hasPropertiesPath() { return Files.isRegularFile(getPropertiesPath()); }
     public boolean hasThumbnailPath() { return Files.isRegularFile(getThumbnailPath()); }
+    
+    public boolean hasThumbnail() { return thumbnail != null; }
+    public Optional<byte[]> getThumbnail() { return Optional.ofNullable(thumbnail); }
     
     public void setName(String name) { this.name = StringUtils.nonNull(name); }
     public void setRequiredFruitsToBonus(int value) { this.requiredFruitsToBonus = MathUtils.clamp(value, 0, 5); }
@@ -152,41 +158,117 @@ public final class Campaign
             episodes.get(i).setIndex(i);
     }
     
-    public void save() throws IOException
+    public void changeThumbnail(Path path) throws IOException
     {
-        Files.createDirectories(path);
-        try(var w = Files.newBufferedWriter(getPropertiesPath()))
+        var data = IOUtils.readAllBytesFromFile(path);
+        thumbnail = data;
+    }
+    
+    public void removeThumbnail()
+    {
+        thumbnail = null;
+    }
+    
+    public CampaingLoadSaveState save(Path path) throws IllegalArgumentException
+    {
+        if(Files.exists(path) && (!Files.isDirectory(path) || !DirectoryUtils.isEmpty(path)))
         {
-            var json = toJson();
-            json.write(w, 4, 0);
+            throw new IllegalArgumentException(String.format(
+                    "\"%s\" is not a valid folder to save a campaign. Required new folder or empty folder.", path.toString()));
+        }
+        
+        var state = new CampaingLoadSaveState(this, path, Campaign::doSave);
+        return state;
+    }
+    private static void doSave(@NonNull Campaign campaign, @NonNull Path path, @NonNull CampaingLoadSaveState state)
+    {
+        state.start(path);
+        try
+        {
+            state.addElements(2);
+            for(var episode : campaign.episodes)
+                episode.prepareSaveState(state);
+            
+            campaign.path = path;
+            Files.createDirectories(path);
+            for(var episode : campaign.episodes)
+                episode.write(state);
+            
+            try(var w = Files.newBufferedWriter(campaign.getPropertiesPath()))
+            {
+                var json = campaign.toJson();
+                json.write(w, 4, 0);
+                state.resolveElement();
+            }
+            
+            try
+            {
+                state.setCurrentDataText(campaign.getThumbnailPath());
+                if(campaign.thumbnail != null)
+                {
+                    IOUtils.writeAllBytesToFile(campaign.getThumbnailPath(), campaign.thumbnail);
+                }
+            }
+            catch(IOException ex) {}
+            finally { state.resolveElement(); }
+            
+            state.finish();
+        }
+        catch(Throwable ex)
+        {
+            ex.printStackTrace(System.err);
+            state.finish(ex.getLocalizedMessage());
         }
     }
     
-    public static Campaign load(@NonNull Path path) throws IOException
+    public static CampaingLoadSaveState load(@NonNull Path path)
     {
+        var fileName = path.getFileName();
+        if(fileName != null && fileName.toString().equals("campaign.json"))
+            path = path.getParent();
+        
         var campaign = new Campaign(path);
+        var state = new CampaingLoadSaveState(campaign, path, Campaign::doLoad);
+        return state;
+    }
+    private static void doLoad(@NonNull Campaign campaign, @NonNull Path path, @NonNull CampaingLoadSaveState state)
+    {
         try(var is = Files.newInputStream(campaign.getPropertiesPath()))
         {
             var json = new JSONObject(new JSONTokener(is));
             campaign.prepareFromJson(json);
-            return campaign;
+            
+            state.addElements(2);
+            for(var episode : campaign.episodes)
+                episode.prepareLoadState(state);
+
+            state.start(path);
+            state.resolveElement();
+            for(var episode : campaign.episodes)
+                episode.read(state);
+            
+            if(!campaign.hasThumbnailPath())
+                campaign.thumbnail = null;
+            else
+            {
+                state.setCurrentDataText(campaign.getThumbnailPath());
+                try { campaign.thumbnail = IOUtils.readAllBytesFromFile(campaign.getThumbnailPath()); }
+                catch(IOException ex) {}
+                finally { state.resolveElement(); }
+            }
+            
+            state.finish();
+        }
+        catch(Throwable ex)
+        {
+            ex.printStackTrace(System.err);
+            state.finish(ex.getLocalizedMessage());
         }
     }
     
-    public static Campaign createNew(@NonNull Path path) throws IOException
+    public static Campaign createNew()
     {
-        if(Files.isDirectory(path))
-        {
-            if(!FileUtils.isDirectoryEmpty(path))
-                throw new IllegalArgumentException(String.format("Folder \"%s\" is not empty. Required empty folder", path.toAbsolutePath()));
-        }
-        else
-            Files.createDirectories(path);
-        
-        var campaign = new Campaign(path);
-        campaign.save();
-        
-        return campaign;
+        return new Campaign(IOUtils.getUserDirectory().resolve("temp"));
     }
     
     private @NonNull JSONObject toJson()
@@ -244,6 +326,7 @@ public final class Campaign
                     {
                         episodes.add(episodeOpt.get());
                         episodesByName.put(episodeOpt.get().getName(), episodeOpt.get());
+                        index++;
                     }
                 }
             }

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch4jConfig>
+  <dontWrapJar>false</dontWrapJar>
+  <headerType>gui</headerType>
+  <jar>D:\Projects\Rollingcube Campaign Editor\RollingcubeCampaignEditor\target\RollingcubeCampaignEditor-1.0-jar-with-dependencies.jar</jar>
+  <outfile>D:\Projects\Rollingcube Campaign Editor\RollingcubeCampaignEditor\build\RollingcubeCampaignCreator.exe</outfile>
+  <errTitle></errTitle>
+  <cmdLine></cmdLine>
+  <chdir>.</chdir>
+  <priority>normal</priority>
+  <downloadUrl></downloadUrl>
+  <supportUrl></supportUrl>
+  <stayAlive>false</stayAlive>
+  <restartOnCrash>false</restartOnCrash>
+  <manifest></manifest>
+  <icon>D:\Projects\Rollingcube Campaign Editor\RollingcubeCampaignEditor\src\main\resources\logo.ico</icon>
+  <jre>
+    <path>%JAVA_HOME%;%PATH%</path>
+    <requiresJdk>false</requiresJdk>
+    <requires64Bit>false</requires64Bit>
+    <minVersion>11</minVersion>
+    <maxVersion></maxVersion>
+  </jre>
+</launch4jConfig>
